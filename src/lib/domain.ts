@@ -1,0 +1,27 @@
+export const roles = ['DIRECTOR','PROJECT_MANAGER','FOREMAN','PTO','PROCUREMENT','ACCOUNTANT'] as const;
+export type Role = typeof roles[number];
+export type Tender = {id:string;companyId:string;title:string;clientName:string;budget:number;status:'NEW'|'ANALYSIS'|'WON';document?:string;score?:number;margin?:number;risks?:string[]};
+export type Project = {id:string;companyId:string;tenderId?:string;name:string;budget:number;progress:number;status:string;buildings:{name:string;floors:{level:number;zones:string[]}[]}[]};
+export type Task = {id:string;projectId:string;title:string;assignee:string;priority:string;status:string;dueDate:string};
+export type Issue = {id:string;projectId:string;title:string;description:string;priority:string;status:string;assignee:string;category:string;imageUrl?:string};
+export type Risk = {id:string;projectId:string;severity:string;title:string;reason:string;impact:string;suggestion:string;isActioned:boolean};
+export type State = {tenders:Tender[];projects:Project[];tasks:Task[];issues:Issue[];risks:Risk[];reports:{id:string;projectId:string;text:string}[];requests:{id:string;projectId:string;title:string;status:string}[];documents:{id:string;projectId:string;name:string;version:number}[];users:{id:string;name:string;email:string;role:Role;status:string}[]};
+export const companyId = 'demo-build-group';
+export const can = (role:Role,action:string) => ({tender:['DIRECTOR','PROJECT_MANAGER','PTO'],project:['DIRECTOR','PROJECT_MANAGER'],issue:['DIRECTOR','PROJECT_MANAGER','FOREMAN','PTO'],task:['DIRECTOR','PROJECT_MANAGER','FOREMAN','PTO'],report:['DIRECTOR','PROJECT_MANAGER','FOREMAN'],purchase:['DIRECTOR','PROJECT_MANAGER','PROCUREMENT'],invite:['DIRECTOR'],document:['DIRECTOR','PROJECT_MANAGER','PTO']}[action]?.includes(role) ?? false);
+export const seed:State = {tenders:[],projects:[],tasks:[],issues:[],risks:[],reports:[],requests:[],documents:[],users:[{id:'director',name:'Alex Morgan',email:'alex@buildgroup.demo',role:'DIRECTOR',status:'Active'},{id:'engineer',name:'Daniyar S.',email:'daniyar@buildgroup.demo',role:'PTO',status:'Active'}]};
+export function mutate(state:State,role:Role,action:string,p:Record<string,string>):State {
+ const category=({newTender:'tender',analyze:'tender',convert:'project',issue:'issue',task:'task',report:'report',purchase:'purchase',invite:'invite',document:'document'} as Record<string,string>)[action];
+ if(!category||!can(role,category)) throw new Error('Your role cannot perform this action');
+ const s=structuredClone(state);const id=crypto.randomUUID();
+ if(action==='newTender') s.tenders.push({id,companyId,title:p.title||'Residential Complex Alatau Residence',clientName:p.client||'Alatau Development',budget:8500000000,status:'NEW',document:p.document});
+ if(action==='analyze'){const t=s.tenders.find(t=>t.id===p.id);if(!t)throw new Error('Tender not found');Object.assign(t,{status:'ANALYSIS',score:78,margin:14,risks:['Short 11-month completion clause conflicts with the 18-month plan','High reliance on imported rebar','Strict failure penalties: legal review required']});}
+ if(action==='convert'){const t=s.tenders.find(t=>t.id===p.id);if(!t||!t.score)throw new Error('Analyze tender first');if(s.projects.some(x=>x.tenderId===t.id))return s;t.status='WON';s.projects.push({id,companyId,tenderId:t.id,name:'Alatau Residence',budget:t.budget,progress:0,status:'PLANNING',buildings:[{name:'Block A',floors:[{level:1,zones:['East','West']},{level:2,zones:['East','West']}]}]});s.tasks.push({id:crypto.randomUUID(),projectId:id,title:'Request façade materials for Block A',assignee:'Procurement team',priority:'HIGH',status:'TODO',dueDate:'2026-10-08'});s.risks.push({id:crypto.randomUUID(),projectId:id,severity:'CRITICAL',title:'Façade procurement gap',reason:'Façade materials have not been requested for Block A.',impact:'7-day schedule slip predicted (demo estimate).',suggestion:'Generate a purchase request for façade materials.',isActioned:false});}
+ if(['issue','task','report','purchase','document'].includes(action)&&!s.projects.some(x=>x.id===p.projectId))throw new Error('Select a project first');
+ if(action==='issue')s.issues.push({id,projectId:p.projectId,title:p.title||'Rebar Spacing Non-Compliance on Floor 2, Block A',description:p.description||'Uninstalled reinforcement mesh. Verify spacing against approved drawings.',priority:'HIGH',status:'ASSIGNED',assignee:'Daniyar S. · Site engineer',category:'Structural / reinforcement',imageUrl:p.imageUrl});
+ if(action==='task'){const t=s.tasks.find(x=>x.id===p.id&&x.projectId===p.projectId);if(!t)throw new Error('Task not found');if(!['TODO','IN_PROGRESS','DONE'].includes(p.status))throw new Error('Invalid status');t.status=p.status;}
+ if(action==='report')s.reports.push({id,projectId:p.projectId,text:`Daily site report · ${p.date}. Weather: ${p.weather}. Workforce: ${p.labor}. Delay notes: ${p.notes||'No delays reported'}. Submitted by ${role}.`});
+ if(action==='purchase'){const r=s.risks.find(x=>x.id===p.id&&x.projectId===p.projectId);if(!r)throw new Error('Risk not found');if(r.isActioned)return s;r.isActioned=true;s.requests.push({id,projectId:p.projectId,title:'Façade materials · Block A',status:'PENDING_APPROVAL'});}
+ if(action==='invite')s.users.push({id,name:p.name,email:p.email,role:roles.includes(p.role as Role)?p.role as Role:'FOREMAN',status:'Invited (demo)'});
+ if(action==='document')s.documents.push({id,projectId:p.projectId,name:p.name,version:s.documents.filter(d=>d.projectId===p.projectId&&d.name===p.name).length+1});
+ return s;
+}
